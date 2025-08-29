@@ -1,4 +1,4 @@
-# Chatbot using Streamlit, LangChain Ollama, and Streaming
+# Rynix's Chatbot (Streamlit + LangChain Ollama, Streaming)
 
 A minimal Streamlit chatbot that talks to local Ollama models via LangChain’s ChatOllama with streaming responses, chat memory trimming, and a one-click chat summary.
 
@@ -8,16 +8,25 @@ Core file:
 
 Key functions (clickable in editor):
 
-- [def get_ollama_base_url()](app.py:26) — Detects Ollama endpoint (env OLLAMA_BASE_URL, Docker host fallback, or localhost)
-- [def is_ollama_available()](app.py:39) — Pings base_url/api/tags to show reachability warning
-- [def build_llm()](app.py:54) — Builds ChatOllama with streaming + advanced params (temperature, top_p, top_k, num_predict, num_ctx)
-- [def summarize_with_llm()](app.py:70) — Summarizes the chat using the same model
-- [def main()](app.py:90) — Streamlit UI, chat loop, history trimming, and actions
+- [def get_first_secret()](app.py:40) — Resolve API keys from Streamlit secrets/env
+- [def get_ollama_base_url()](app.py:58) — Detect Ollama endpoint (env OLLAMA_BASE_URL, Docker host fallback, or localhost)
+- [def is_ollama_available()](app.py:71) — Pings base_url/api/tags to show reachability warning
+- [def build_llm()](app.py:86) — Builds provider-specific chat model (Ollama/OpenAI/Gemini) with streaming
+- [def summarize_with_llm()](app.py:143) — Summarizes the chat using the same model
+- [def main()](app.py:163) — Streamlit UI, provider & model selection, chat loop, summary
 
-Models (dropdown by default):
+Providers and models (select in sidebar):
 
-- llama3.2
-- deepseek-r1:1.5b
+- Ollama
+  - llama3.2
+  - deepseek-r1:1.5b
+- OpenAI
+  - gpt-4o-mini
+  - gpt-4o
+  - gpt-3.5-turbo
+- Gemini
+  - gemini-1.5-flash
+  - gemini-1.5-pro
 
 Features
 
@@ -29,93 +38,96 @@ Features
 
 Prerequisites
 
-- Ollama installed and running
-  - https://ollama.com
+- If using Ollama:
+  - Install and run Ollama — https://ollama.com
   - Start service: Windows/macOS app/daemon or `ollama serve` (Linux)
   - Pull models:
     - `ollama pull llama3.2`
     - `ollama pull deepseek-r1:1.5b`
-- For Docker use, the app connects to host Ollama via `http://host.docker.internal:11434` by default (overrideable).
+  - For Docker use, the app connects to host Ollama via `http://host.docker.internal:11434` by default (overrideable).
+- If using OpenAI:
+  - An OpenAI API key with access to the chosen model(s).
+- If using Gemini:
+  - A Google Generative AI key (GOOGLE_API_KEY or GEMINI_API_KEY) with access to the chosen model(s).
 
 Environment variables
 
-- OLLAMA_BASE_URL — Optional. Example values:
-  - Local: `http://localhost:11434`
-  - Docker-to-host: `http://host.docker.internal:11434`
-  - Remote host: `http://<your-host-ip>:11434`
+- For Ollama:
+  - OLLAMA_BASE_URL (optional)
+    - Local: `http://localhost:11434`
+    - Docker-to-host: `http://host.docker.internal:11434`
+    - Remote host: `http://<your-host-ip>:11434`
+- For OpenAI:
+  - OPENAI_API_KEY (required when provider=OpenAI)
+- For Gemini:
+  - GOOGLE_API_KEY or GEMINI_API_KEY (required when provider=Gemini)
 
 Run locally (no Docker)
 
 1. Install Python 3.10+ and dependencies:
    pip install -r requirements.txt
-2. Start Streamlit:
+2. Set provider-specific env if needed (examples):
+   - OpenAI (Windows cmd):
+     set OPENAI_API_KEY=sk-...
+   - Gemini (Windows cmd):
+     set GOOGLE_API_KEY=AIza...
+   - Ollama local (optional override):
+     set OLLAMA_BASE_URL=http://localhost:11434
+3. Start Streamlit:
    streamlit run app.py
 
-Run with Docker Compose (recommended)
+Run with Docker (CPU default)
+Execute:
+powershell -Command "docker stop openlm-chat 2>$null; docker stop openlm-chat-gpu 2>$null; docker build -t openlm-streamlit .; docker run --rm --name openlm-chat -p 8501:8501 -e OLLAMA_BASE_URL=http://host.docker.internal:11434 openlm-streamlit"
 
-- Compose file: [docker-compose.yml](docker-compose.yml:1)
-- Images will be tagged as openlm-streamlit (CPU) and openlm-streamlit-gpu (GPU).
-- Containers will be named openlm-chat (CPU) and openlm-chat-gpu (GPU).
+Then open:
+http://localhost:8501
 
-CPU (default profile):
+Optional: GPU container
 
-- docker compose up -d --build app
-- Open http://localhost:8501
-- Logs: docker compose logs -f app
-- Stop: docker compose down
-
-GPU (requires NVIDIA GPU/driver and Docker GPU support):
-
-- docker compose --profile gpu up -d --build app-gpu
-- Open http://localhost:8502
-- Logs: docker compose logs -f app-gpu
-- Stop: docker compose down
-
-Manual Docker (alternative)
-
-CPU:
-
-- powershell -Command "docker stop openlm-chat 2>$null; docker stop openlm-chat-gpu 2>$null; docker build -t openlm-streamlit .; docker run --rm --name openlm-chat -p 8501:8501 -e OLLAMA_BASE_URL=http://host.docker.internal:11434 openlm-streamlit"
-
-GPU:
-
-- docker build -f [Dockerfile.gpu](Dockerfile.gpu:1) -t openlm-streamlit-gpu .
-- docker run --rm --gpus all --name openlm-chat-gpu -p 8502:8501 -e OLLAMA_BASE_URL=http://host.docker.internal:11434 openlm-streamlit-gpu
-
-Notes:
-
-- The app connects to host Ollama by default at http://host.docker.internal:11434; override with OLLAMA_BASE_URL if needed.
-- For GPU, Ollama on the host will use the GPU automatically if available.
+- A CUDA-enabled Dockerfile is provided as [Dockerfile.gpu](Dockerfile.gpu).
+- Build and run (requires NVIDIA GPU, proper drivers, and Docker GPU support):
+  docker build -f Dockerfile.gpu -t openlm-streamlit-gpu .
+  docker run --rm --gpus all --name openlm-chat-gpu -p 8501:8501 -e OLLAMA_BASE_URL=http://host.docker.internal:11434 openlm-streamlit-gpu
+- Ollama’s GPU usage is automatic on the host; the app just calls the server.
 
 UI usage
 
-- Select a model from the sidebar (ensure it’s pulled in Ollama).
-- Adjust Max History and Context Size to control memory and prompt window.
-- Use Advanced settings to tune sampling.
-- Type your message in the chat box; responses stream in real time.
-- Click “Summarize chat” to get a concise multi-sentence summary using the same model.
+- Pilih Provider di sidebar: Ollama, OpenAI, atau Gemini.
+- Pilih Model sesuai Provider. Jika Ollama, pastikan model sudah di-pull di server Ollama.
+- Adjust Max History dan Context Size untuk mengontrol memori dan jendela konteks (num_ctx untuk Ollama).
+- Gunakan Advanced settings untuk mengatur temperature, top-p; top-k berlaku untuk Ollama/Gemini.
+- Ketik pesan di chat box; respons akan streaming secara real time.
+- Klik “Summarize chat” untuk ringkasan singkat percakapan dengan model yang sama.
 
 Troubleshooting
 
 - “Ollama not reachable” warning in sidebar:
 
-  - Ensure Ollama is running and the model is pulled:
-    - `ollama serve` (if not started)
+  - Pastikan Ollama berjalan dan model sudah di-pull:
+    - `ollama serve` (jika belum jalan)
     - `ollama pull llama3.2`
-  - Verify OLLAMA_BASE_URL:
+  - Verifikasi OLLAMA_BASE_URL:
     - Local: `http://localhost:11434`
     - Docker-to-host: `http://host.docker.internal:11434`
-  - Test from container with curl (optional): `curl $OLLAMA_BASE_URL/api/tags`
+  - Test dari container (opsional): `curl $OLLAMA_BASE_URL/api/tags`
+
+- “OPENAI_API_KEY not set” (provider=OpenAI):
+
+  - Tambahkan OPENAI_API_KEY di environment atau Streamlit secrets.
+
+- “GOOGLE_API_KEY / GEMINI_API_KEY not set” (provider=Gemini):
+
+  - Tambahkan salah satu key di environment atau Streamlit secrets.
 
 - Slow responses / long first token:
 
-  - Models load on first request; subsequent prompts are faster.
-  - Reduce “Max new tokens” and/or temperature; try a smaller model.
+  - Model warm-up di permintaan pertama; berikutnya lebih cepat.
+  - Kurangi “Max new tokens” dan/atau temperature; pilih model yang lebih kecil.
 
 - GPU not used by Ollama:
-
-  - Ollama auto-detects host GPU. Check Ollama logs and driver installation.
-  - On Windows, use WSL2 for best compatibility.
+  - Ollama auto-detect GPU host. Cek logs dan driver.
+  - Di Windows, gunakan WSL2 untuk kompatibilitas terbaik.
 
 License
 

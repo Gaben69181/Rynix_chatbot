@@ -19,7 +19,10 @@ COPY . /app
 
 EXPOSE 8501
 
-# Default Ollama endpoint for container-to-host access; override as needed
-ENV OLLAMA_BASE_URL=http://host.docker.internal:11434
+# Default endpoints/keys; override as needed via `docker run -e ...` or docker-compose
+ENV OLLAMA_BASE_URL=http://host.docker.internal:11434 \
+    OPENAI_API_KEY= \
+    GOOGLE_API_KEY= \
+    GEMINI_API_KEY=
 
 CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]

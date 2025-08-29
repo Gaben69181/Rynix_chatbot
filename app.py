@@ -1,5 +1,5 @@
 import os
-from typing import List, Dict
+from typing import List, Dict, Any
 
 import streamlit as st
 
@@ -15,6 +15,17 @@ except Exception:
         except Exception:
             ChatOllama = None  # type: ignore
 
+# Additional providers: OpenAI and Google Gemini
+try:
+    from langchain_openai import ChatOpenAI  # type: ignore
+except Exception:
+    ChatOpenAI = None  # type: ignore
+
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI  # type: ignore
+except Exception:
+    ChatGoogleGenerativeAI = None  # type: ignore
+
 from langchain.schema import HumanMessage, AIMessage  # type: ignore
 from langchain.memory import ConversationBufferMemory  # type: ignore
 from langchain.chains import LLMChain  # type: ignore
@@ -26,6 +37,24 @@ except Exception:
     requests = None  # type: ignore
 
 
+def get_first_secret(*names: str) -> str | None:
+    """
+    Return the first non-empty secret/environment variable value for the given names.
+    Order of lookup: st.secrets[name] then os.getenv(name).
+    """
+    for n in names:
+        try:
+            # Streamlit secrets (if available)
+            if "secrets" in dir(st) and n in st.secrets:
+                v = st.secrets[n]
+                if v:
+                    return str(v)
+        except Exception:
+            pass
+        v = os.getenv(n)
+        if v:
+            return v
+    return None
 def get_ollama_base_url() -> str:
     env_url = os.getenv("OLLAMA_BASE_URL")
     if env_url:
@@ -54,7 +83,48 @@ def clear_memory():
     st.session_state.memory = ConversationBufferMemory(return_messages=True)
 
 
-def build_llm(model: str, temperature: float, top_p: float, top_k: int, max_new_tokens: int, num_ctx: int):
+def build_llm(provider: str, model: str, temperature: float, top_p: float, top_k: int, max_new_tokens: int, num_ctx: int):
+    """
+    Construct a LangChain chat model for the selected provider.
+    - Ollama: uses ChatOllama (requires reachable Ollama server)
+    - OpenAI: uses ChatOpenAI (requires OPENAI_API_KEY)
+    - Gemini: uses ChatGoogleGenerativeAI (requires GOOGLE_API_KEY or GEMINI_API_KEY)
+    """
+    provider = (provider or "Ollama").strip()
+
+    if provider == "OpenAI":
+        if ChatOpenAI is None:
+            raise RuntimeError("ChatOpenAI is not available. Install langchain-openai.")
+        api_key = get_first_secret("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY is missing. Set it via environment or Streamlit secrets.")
+        os.environ["OPENAI_API_KEY"] = api_key
+        # top_k not supported by OpenAI; num_ctx handled server-side; map max_new_tokens -> max_tokens
+        return ChatOpenAI(
+            model=model,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_new_tokens,
+            streaming=True,
+        )
+
+    if provider == "Gemini":
+        if ChatGoogleGenerativeAI is None:
+            raise RuntimeError("ChatGoogleGenerativeAI is not available. Install langchain-google-genai.")
+        api_key = get_first_secret("GOOGLE_API_KEY", "GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError("GOOGLE_API_KEY / GEMINI_API_KEY is missing. Set it via environment or Streamlit secrets.")
+        os.environ["GOOGLE_API_KEY"] = api_key
+        return ChatGoogleGenerativeAI(
+            model=model,
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            max_output_tokens=max_new_tokens,
+            streaming=True,
+        )
+
+    # Default: Ollama
     if ChatOllama is None:
         raise RuntimeError("ChatOllama is not available. Please ensure langchain-community is installed.")
     base = get_ollama_base_url()
@@ -70,7 +140,7 @@ def build_llm(model: str, temperature: float, top_p: float, top_k: int, max_new_
     )
 
 
-def summarize_with_llm(llm: "ChatOllama", history: List[Dict[str, str]]) -> str:
+def summarize_with_llm(llm: Any, history: List[Dict[str, str]]) -> str:
     # Build transcript
     lines = []
     for msg in history:
@@ -96,17 +166,25 @@ def main():
 
     # Sidebar
     st.sidebar.header("Settings")
-    model_options = ["llama3.2", "deepseek-r1:1.5b"]
+    provider = st.sidebar.selectbox("Provider", ["Ollama", "OpenAI", "Gemini"], index=0)
+
+    if provider == "Ollama":
+        model_options = ["llama3.2", "deepseek-r1:1.5b"]
+    elif provider == "OpenAI":
+        model_options = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
+    else:  # Gemini
+        model_options = ["gemini-1.5-flash", "gemini-1.5-pro"]
+
     MODEL = st.sidebar.selectbox("Choose a Model", model_options, index=0)
-    MAX_HISTORY = 2 
+    MAX_HISTORY = 2
     # max_history = st.sidebar.number_input("Max History", min_value=1, max_value=10, value=2, step=1)
-    CONTEXT_SIZE = 8192 
+    CONTEXT_SIZE = 8192
     # context_size = st.sidebar.number_input("Context Size", min_value=1024, max_value=16384, value=8192, step=1024)
 
     with st.sidebar.expander("Advanced settings", expanded=False):
         temperature = st.slider("Temperature", 0.0, 1.5, 0.7, 0.05)
         top_p = st.slider("Top-p", 0.0, 1.0, 0.9, 0.05)
-        top_k = st.slider("Top-k", 0, 200, 50, 1)
+        top_k = st.slider("Top-k (used by Ollama/Gemini)", 0, 200, 50, 1)
         max_new_tokens = st.slider("Max new tokens", 16, 4096, 256, 8)
 
     btn_cols = st.sidebar.columns(2)
@@ -125,6 +203,8 @@ def main():
     changed = False
     if "prev_context_size" not in st.session_state or st.session_state.prev_context_size != CONTEXT_SIZE:
         changed = True
+    if "prev_provider" not in st.session_state or st.session_state.prev_provider != provider:
+        changed = True
     if "prev_model" not in st.session_state or st.session_state.prev_model != MODEL:
         changed = True
     for key, val in [
@@ -138,6 +218,7 @@ def main():
     if clear_clicked or changed:
         clear_memory()
         st.session_state.prev_context_size = CONTEXT_SIZE
+        st.session_state.prev_provider = provider
         st.session_state.prev_model = MODEL
         st.session_state.prev_temperature = temperature
         st.session_state.prev_top_p = top_p
@@ -145,13 +226,20 @@ def main():
         st.session_state.prev_max_new_tokens = max_new_tokens
         st.session_state.summary = ""
 
-    # Connectivity info
-    base_url = get_ollama_base_url()
-    if not is_ollama_available(base_url):
-        st.sidebar.warning(f"Ollama not reachable at {base_url}. Start Ollama and pull the model: ollama pull {MODEL}")
+    # Connectivity / credentials info
+    if provider == "Ollama":
+        base_url = get_ollama_base_url()
+        if not is_ollama_available(base_url):
+            st.sidebar.warning(f"Ollama not reachable at {base_url}. Start Ollama and pull the model: ollama pull {MODEL}")
+    elif provider == "OpenAI":
+        if not get_first_secret("OPENAI_API_KEY"):
+            st.sidebar.error("OPENAI_API_KEY not set. Add it to environment or Streamlit secrets.")
+    elif provider == "Gemini":
+        if not get_first_secret("GOOGLE_API_KEY", "GEMINI_API_KEY"):
+            st.sidebar.error("GOOGLE_API_KEY / GEMINI_API_KEY not set. Add it to environment or Streamlit secrets.")
 
     # Build LLM and chain
-    llm = build_llm(MODEL, temperature, top_p, top_k, max_new_tokens, CONTEXT_SIZE)
+    llm = build_llm(provider, MODEL, temperature, top_p, top_k, max_new_tokens, CONTEXT_SIZE)
     prompt_template = PromptTemplate(
         input_variables=["history", "human_input"],
         template="{history}\nUser: {human_input}\nAssistant:"
