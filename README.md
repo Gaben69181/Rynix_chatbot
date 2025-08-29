@@ -1,4 +1,4 @@
-# Rynix's Chatbot (Streamlit + LangChain Ollama, Streaming)
+# Chatbot using Streamlit, LangChain Ollama, and Streaming
 
 A minimal Streamlit chatbot that talks to local Ollama models via LangChain’s ChatOllama with streaming responses, chat memory trimming, and a one-click chat summary.
 
