@@ -91,7 +91,7 @@ def summarize_with_llm(llm: "ChatOllama", history: List[Dict[str, str]]) -> str:
 
 
 def main():
-    st.set_page_config(layout="wide", page_title="My Local Chatbot", page_icon="🤖")
+    st.set_page_config(layout="wide", page_title="Rynix's Chatbot", page_icon="🤖")
     st.title("Rynix's Chatbot")
 
     # Sidebar

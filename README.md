@@ -51,20 +51,41 @@ Run locally (no Docker)
 2. Start Streamlit:
    streamlit run app.py
 
-Run with Docker (CPU default)
-Execute:
-powershell -Command "docker stop openlm-chat 2>$null; docker stop openlm-chat-gpu 2>$null; docker build -t openlm-streamlit .; docker run --rm --name openlm-chat -p 8501:8501 -e OLLAMA_BASE_URL=http://host.docker.internal:11434 openlm-streamlit"
+Run with Docker Compose (recommended)
 
-Then open:
-http://localhost:8501
+- Compose file: [docker-compose.yml](docker-compose.yml:1)
+- Images will be tagged as openlm-streamlit (CPU) and openlm-streamlit-gpu (GPU).
+- Containers will be named openlm-chat (CPU) and openlm-chat-gpu (GPU).
 
-Optional: GPU container
+CPU (default profile):
 
-- A CUDA-enabled Dockerfile is provided as [Dockerfile.gpu](Dockerfile.gpu).
-- Build and run (requires NVIDIA GPU, proper drivers, and Docker GPU support):
-  docker build -f Dockerfile.gpu -t openlm-streamlit-gpu .
-  docker run --rm --gpus all --name openlm-chat-gpu -p 8501:8501 -e OLLAMA_BASE_URL=http://host.docker.internal:11434 openlm-streamlit-gpu
-- Ollama’s GPU usage is automatic on the host; the app just calls the server.
+- docker compose up -d --build app
+- Open http://localhost:8501
+- Logs: docker compose logs -f app
+- Stop: docker compose down
+
+GPU (requires NVIDIA GPU/driver and Docker GPU support):
+
+- docker compose --profile gpu up -d --build app-gpu
+- Open http://localhost:8502
+- Logs: docker compose logs -f app-gpu
+- Stop: docker compose down
+
+Manual Docker (alternative)
+
+CPU:
+
+- powershell -Command "docker stop openlm-chat 2>$null; docker stop openlm-chat-gpu 2>$null; docker build -t openlm-streamlit .; docker run --rm --name openlm-chat -p 8501:8501 -e OLLAMA_BASE_URL=http://host.docker.internal:11434 openlm-streamlit"
+
+GPU:
+
+- docker build -f [Dockerfile.gpu](Dockerfile.gpu:1) -t openlm-streamlit-gpu .
+- docker run --rm --gpus all --name openlm-chat-gpu -p 8502:8501 -e OLLAMA_BASE_URL=http://host.docker.internal:11434 openlm-streamlit-gpu
+
+Notes:
+
+- The app connects to host Ollama by default at http://host.docker.internal:11434; override with OLLAMA_BASE_URL if needed.
+- For GPU, Ollama on the host will use the GPU automatically if available.
 
 UI usage
 

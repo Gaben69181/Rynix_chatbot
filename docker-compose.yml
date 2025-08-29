@@ -1,8 +1,10 @@
-version: "3.9"
 
 services:
   app:
-    build: .
+    image: openlm-streamlit
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: openlm-chat
     ports:
       - "8501:8501"
@@ -19,6 +21,37 @@ services:
     volumes:
       - hf-cache:/root/.cache/huggingface
     restart: unless-stopped
+    profiles: ["cpu"]
+
+  app-gpu:
+    image: openlm-streamlit-gpu
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    container_name: openlm-chat-gpu
+    ports:
+      - "8502:8501"
+    environment:
+      # Streamlit
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+      # Ollama base URL (override if needed)
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # Persist HF cache across runs
+      - HF_HOME=/root/.cache/huggingface
+      - TRANSFORMERS_CACHE=/root/.cache/huggingface
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    restart: unless-stopped
+    profiles: ["gpu"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: ["gpu"]
+    # If your Docker Compose supports it, you can also use:
+    # gpus: all
 
 volumes:
   hf-cache:
